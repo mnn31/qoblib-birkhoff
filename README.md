@@ -1,9 +1,9 @@
 # Dense minimum Birkhoff-decomposition experiments
 
-This directory contains a reproducible exact-decomposition benchmark for the
-fifteen dense Birkhoff instances that currently have no recorded solution:
-`B64_4096_1` through `B64_4096_10`, and `B100_10000_1` through
-`B100_10000_5`.
+This repository contains a reproducible exact-decomposition benchmark for
+QOBLIB Birkhoff instances. It was initially used for the fifteen dense
+instances that had no recorded solution: `B64_4096_1` through `B64_4096_10`,
+and `B100_10000_1` through `B100_10000_5`.
 
 The solver keeps the residual matrix and coefficients as integers.  In each
 iteration it finds a perfect matching in the positive residual support and
@@ -16,10 +16,10 @@ to the instance scale.
 Install Python with NumPy and SciPy, then run:
 
 ```bash
-python experiments/birkhoff/benchmark_birkhoff.py \
+python benchmark_birkhoff.py \
   03-birkhoff/instances/qbench_64_dense.json /tmp/qbench_64_solution.json \
   --policy max_min_zero_low_sum
-python experiments/birkhoff/benchmark_birkhoff.py \
+python benchmark_birkhoff.py \
   03-birkhoff/instances/qbench_100_dense.json /tmp/qbench_100_solution.json \
   --policy max_min_zero_low_sum
 ```
@@ -28,6 +28,15 @@ python experiments/birkhoff/benchmark_birkhoff.py \
 maximizes the number of entries made zero by the subtraction, and finally
 minimizes the matching's residual sum.  The latter two rules are tie-breakers
 within the same max-min threshold.
+
+To write QOBLIB submission files, including the objective time series, use:
+
+```bash
+python benchmark_birkhoff.py \
+  03-birkhoff/instances/qbench_64_dense.json \
+  --policy max_min_zero_low_sum \
+  --submission-root /tmp/qoblib-submission
+```
 
 ## Measured ablation
 

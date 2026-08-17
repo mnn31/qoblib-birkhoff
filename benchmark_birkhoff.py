@@ -11,6 +11,7 @@ decomposition of every input matrix.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import time
 from pathlib import Path
@@ -149,10 +150,99 @@ def solve_file(input_path: Path, output_path: Path, policy: str) -> None:
     output_path.write_text(json.dumps(solutions, separators=(",", ":")) + "\n")
 
 
+SUMMARY_COLUMNS = [
+    "Problem", "Submitter", "Affiliation", "Date", "Reference",
+    "Best Objective Value", "Optimality Bound", "Modeling Approach",
+    "# Decision Variables", "# Binary Variables", "# Integer Variables",
+    "# Continuous Variables", "# Non-Zero Coefficients", "Coefficients Type",
+    "Coefficients Range", "Workflow", "Algorithm Type", "Paradigm", "# Runs",
+    "# Feasible Runs", "# Successful Runs", "Success Threshold",
+    "Hardware Specifications", "Total Runtime", "Time to Solution", "CPU Runtime",
+    "GPU Runtime", "QPU Runtime", "Other HW Runtime", "Remarks",
+]
+
+
+def write_submission(input_path: Path, submission_root: Path, policy: str) -> None:
+    """Create one QOBLIB submission directory from an instance collection."""
+    payload = json.loads(input_path.read_text())
+    for instance in payload.values():
+        if not isinstance(instance, dict) or "id" not in instance:
+            continue
+        weights, permutations, trajectory = decompose_with_trajectory(instance, policy)
+        instance_id = str(instance["id"])
+        n = int(instance["n"])
+        elapsed = float(trajectory[-1]["Time"])
+        result = {
+            "id": instance_id,
+            "scaled_doubly_stochastic_matrix": instance["scaled_doubly_stochastic_matrix"],
+            "weights": weights,
+            "permutations": [entry for permutation in permutations for entry in permutation],
+        }
+        qoblib_trajectory = [
+            [
+                {
+                    "Time": point["Time"],
+                    "Incumbent": point["Number of Matrices"],
+                    "Error": point["Approximation"],
+                }
+                for point in trajectory
+            ]
+        ]
+        instance_dir = submission_root / instance_id
+        instance_dir.mkdir(parents=True, exist_ok=True)
+        (instance_dir / f"{instance_id}_solution.json").write_text(
+            json.dumps({"1": result}, indent=2) + "\n"
+        )
+        (instance_dir / f"{instance_id}_objective_time_series.json").write_text(
+            json.dumps(qoblib_trajectory, indent=2) + "\n"
+        )
+        summary = {
+            "Problem": instance_id,
+            "Submitter": "Manan Gupta",
+            "Affiliation": "Independent Researcher",
+            "Date": "2026-08-17",
+            "Reference": "https://github.com/mnn31/qoblib-birkhoff",
+            "Best Objective Value": len(weights),
+            "Optimality Bound": "N/A",
+            "Modeling Approach": "Exact integer Birkhoff decomposition using bottleneck perfect matchings.",
+            "# Decision Variables": len(weights) * (n + 1),
+            "# Binary Variables": len(weights) * n,
+            "# Integer Variables": len(weights),
+            "# Continuous Variables": 0,
+            "# Non-Zero Coefficients": 2 * n,
+            "Coefficients Type": "Binary and integer",
+            "Coefficients Range": f"1 to {int(instance['scale'])}",
+            "Workflow": "At each iteration, maximize the smallest residual selected by a perfect matching. Within that threshold, maximize eliminated entries and then minimize the matching residual sum. Subtract the selected minimum exactly.",
+            "Algorithm Type": "Deterministic",
+            "Paradigm": "Classical",
+            "# Runs": 1,
+            "# Feasible Runs": 1,
+            "# Successful Runs": 1,
+            "Success Threshold": 0,
+            "Hardware Specifications": "Apple MacBook Pro with Apple M3 Pro, 11 CPU cores, 18 GB unified memory",
+            "Total Runtime": f"{elapsed:.6f}",
+            "Time to Solution": f"{elapsed:.6f}",
+            "CPU Runtime": f"{elapsed:.6f}",
+            "GPU Runtime": 0,
+            "QPU Runtime": 0,
+            "Other HW Runtime": 0,
+            "Remarks": "Exact reconstruction verified; no optimality claim is made.",
+        }
+        with (instance_dir / f"{instance_id}_summary.csv").open("w", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=SUMMARY_COLUMNS)
+            writer.writeheader()
+            writer.writerow(summary)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
-    parser.add_argument("output", type=Path)
+    parser.add_argument("output", type=Path, nargs="?")
+    parser.add_argument(
+        "--submission-root",
+        type=Path,
+        help="Write QOBLIB submission files below this directory.",
+    )
     parser.add_argument(
         "--policy",
         choices=(
@@ -165,7 +255,12 @@ def main() -> None:
         default="largest_weight",
     )
     arguments = parser.parse_args()
-    solve_file(arguments.input, arguments.output, arguments.policy)
+    if arguments.submission_root is not None:
+        write_submission(arguments.input, arguments.submission_root, arguments.policy)
+    elif arguments.output is not None:
+        solve_file(arguments.input, arguments.output, arguments.policy)
+    else:
+        parser.error("output is required unless --submission-root is used")
 
 
 if __name__ == "__main__":
