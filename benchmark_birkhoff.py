@@ -229,7 +229,7 @@ def write_submission(input_path: Path, submission_root: Path, policy: str) -> No
             "Remarks": "Exact reconstruction verified; no optimality claim is made.",
         }
         with (instance_dir / f"{instance_id}_summary.csv").open("w", newline="") as file:
-            writer = csv.DictWriter(file, fieldnames=SUMMARY_COLUMNS)
+            writer = csv.DictWriter(file, fieldnames=SUMMARY_COLUMNS, lineterminator="\n")
             writer.writeheader()
             writer.writerow(summary)
 
