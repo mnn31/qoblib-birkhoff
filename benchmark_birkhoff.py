@@ -20,6 +20,44 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
+
+def lexicographic_assignment(cost: np.ndarray) -> np.ndarray:
+    """The lexicographically smallest optimal assignment of ``cost``.
+
+    ``linear_sum_assignment`` returns *an* optimal assignment.  When several are
+    optimal, which one comes back is decided by the traversal order inside the
+    LAP implementation, so the output can differ between library versions.  This
+    pins it: rows are fixed in order, each taking the smallest column that still
+    admits an optimal completion, which singles out one assignment independently
+    of the solver.
+
+    Costs are integers here, so the optimality test is an exact comparison.
+    """
+    n = cost.shape[0]
+    rows, cols = linear_sum_assignment(cost)
+    optimum = int(cost[rows, cols].sum())
+
+    remaining = list(range(n))
+    chosen = np.empty(n, dtype=np.int64)
+    fixed = 0
+    for i in range(n):
+        for pos, j in enumerate(remaining):
+            candidate = fixed + int(cost[i, j])
+            rest = [c for c in remaining if c != j]
+            if rest:
+                sub = cost[i + 1:, rest]
+                r, c = linear_sum_assignment(sub)
+                candidate += int(sub[r, c].sum())
+            if candidate == optimum:
+                chosen[i] = j
+                fixed += int(cost[i, j])
+                remaining.pop(pos)
+                break
+        else:  # pragma: no cover - would mean the optimum was unreachable
+            raise AssertionError(f"no optimal completion for row {i}")
+    return chosen
+
+
 def positive_perfect_matching(residual: np.ndarray, policy: str) -> np.ndarray:
     """Return a perfect matching using only positive entries of ``residual``."""
     n = residual.shape[0]
@@ -28,8 +66,8 @@ def positive_perfect_matching(residual: np.ndarray, policy: str) -> np.ndarray:
 
     if policy == "largest_weight":
         cost = np.where(residual > 0, -residual, forbidden)
-        rows, cols = linear_sum_assignment(cost)
-        assert np.all(residual[rows, cols] > 0)
+        cols = lexicographic_assignment(cost)
+        assert np.all(residual[np.arange(n), cols] > 0)
         return cols
 
     if policy not in {
@@ -43,6 +81,7 @@ def positive_perfect_matching(residual: np.ndarray, policy: str) -> np.ndarray:
     values = np.unique(residual[residual > 0])
     low, high = 0, len(values) - 1
     best: np.ndarray | None = None
+    best_threshold = None
     while low <= high:
         middle = (low + high) // 2
         threshold = values[middle]
@@ -63,11 +102,17 @@ def positive_perfect_matching(residual: np.ndarray, policy: str) -> np.ndarray:
         rows, cols = linear_sum_assignment(cost)
         if np.all(allowed[rows, cols]):
             best = cols
+            best_threshold = threshold
+            best_cost = cost
             low = middle + 1
         else:
             high = middle - 1
     assert best is not None
-    return best
+    # The binary search only needs feasibility, so it may use whichever optimal
+    # matching the LAP happened to return.  Re-derive the winning threshold's
+    # matching under the lexicographic rule so the result does not depend on
+    # the LAP implementation.
+    return lexicographic_assignment(best_cost)
 
 
 def decompose(instance: dict[str, object], policy: str) -> tuple[list[int], list[list[int]]]:
